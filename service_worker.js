@@ -1,11 +1,15 @@
-// service_worker.js
+// serviceworker.js
+// this service worker is part of a chrome manifest v3 script
+// service workers can only stay active a few minutes at a time before being forced closed by the browser
+// local variables will lose their state with each service worker restart, which needs to be considered when updating this code
+
 let backgroundPageTabId = null;
 let backgroundPageTabIdLoaded = false;
 let messageQueue = [];
 
 async function updateIconToOn() {
   if (chrome.action && chrome.action.setIcon) {
-    //await chrome.action.setIcon({ path: "/icons/on.png" });
+   // await chrome.action.setIcon({ path: "/icons/on.png" });
   }
 }
 
@@ -15,63 +19,81 @@ async function updateIconToOff() {
   }
 }
 
+function log(msg, msg2 = "") {
+  //console.log(msg, msg2);
+}
+
+
 async function checkBackgroundPageIsOpen() {
-  console.log("Checking if background page is open", backgroundPageTabId);
+  log("Checking if background page is open", backgroundPageTabId);
+
+  const existingTabs = await chrome.tabs.query({ url: chrome.runtime.getURL('background.html') });
   
-  if (backgroundPageTabId !== null) {
-    try {
-      await chrome.tabs.get(backgroundPageTabId);
-      return backgroundPageTabIdLoaded;
-    } catch (error) {
-      console.log("Background page tab no longer exists");
-      backgroundPageTabId = null;
-      backgroundPageTabIdLoaded = false;
-      await updateIconToOff();
-      return false;
+  if (existingTabs.length > 0) {
+    log(`Found ${existingTabs.length} background tab(s).`);
+    
+    // If there are multiple tabs, close all but the first one
+    if (existingTabs.length > 1) {
+      log("Closing extra background tabs.");
+      for (let i = 1; i < existingTabs.length; i++) {
+        await chrome.tabs.remove(existingTabs[i].id);
+      }
     }
+    
+    backgroundPageTabId = existingTabs[0].id;
+    backgroundPageTabIdLoaded = existingTabs[0].status === "complete";
+    
+    if (backgroundPageTabIdLoaded) {
+      await updateIconToOn();
+      return true;
+    }
+  } else {
+    backgroundPageTabId = null;
+    backgroundPageTabIdLoaded = false;
   }
+  
   await updateIconToOff();
   return false;
 }
 
-async function ensureBackgroundPageIsOpen() {
-  console.log("Ensuring background page is open", backgroundPageTabId);
-  
+async function ensureBackgroundPageIsOpen(load = true) {
+  log("Ensuring background page is open", backgroundPageTabId);
+
   const isOpen = await checkBackgroundPageIsOpen();
   if (isOpen) {
-    console.log("Background page is already open");
-    await updateIconToOn();
+    log("Background page is already open");
     return;
   }
 
-  try {
-    const existingTabs = await chrome.tabs.query({url: chrome.runtime.getURL('../background.html')});
-    if (existingTabs.length > 0) {
-      console.log("Found existing background page");
-      backgroundPageTabId = existingTabs[0].id;
-      backgroundPageTabIdLoaded = true;
-    } else {
+  if (load) {
+    try {
       const tab = await chrome.tabs.create({
-        url: chrome.runtime.getURL('../background.html'),
+        url: chrome.runtime.getURL('background.html'),
         active: false,
-		pinned: true
+        pinned: true
       });
       backgroundPageTabId = tab.id;
-      console.log("Background page created with ID:", backgroundPageTabId);
+      log("Background page created with ID:", backgroundPageTabId);
+      
       // Wait for the background page to initialize
-      await new Promise(resolve => setTimeout(resolve, 500));
+      await new Promise(resolve => {
+        chrome.tabs.onUpdated.addListener(function listener(tabId, info) {
+          if (tabId === backgroundPageTabId && info.status === 'complete') {
+            chrome.tabs.onUpdated.removeListener(listener);
+            resolve();
+          }
+        });
+      });
       backgroundPageTabIdLoaded = true;
-      console.log("Background page loaded");
+      log("Background page loaded");
+    } catch (error) {
+      console.error("Error ensuring background page is open:", error);
+      throw error;
     }
-    await updateIconToOn();
-    // Process any queued messages
-    console.log("Message queue:", messageQueue);
-    await processMessageQueue();
-  } catch (error) {
-    console.error("Error ensuring background page is open:", error);
-    await updateIconToOff();
-    throw error;
   }
+  
+  await updateIconToOn();
+  await processMessageQueue();
 }
 
 async function processMessageQueue() {
@@ -84,20 +106,21 @@ async function processMessageQueue() {
 // Listener for tab removal to reset state if the background page is closed
 chrome.tabs.onRemoved.addListener(async (tabId) => {
   if (tabId === backgroundPageTabId) {
-    console.log("Background page tab was closed");
+    log("Background page tab was closed");
     backgroundPageTabId = null;
     backgroundPageTabIdLoaded = false;
     await updateIconToOff();
+	// ensureBackgroundPageIsOpen();
   }
 });
 
 function sendMessageToBackgroundPage(message, sendResponse) {
-  console.log("sending message", message);
+  log("sending message", message);
   chrome.runtime.sendMessage(message.data, (response) => {
-    console.log("response", response);
+    log("response", response);
     if (chrome.runtime.lastError) {
       console.error("Error sending message to background:", chrome.runtime.lastError);
-      sendResponse({error: 'Failed to communicate with background page'});
+      sendResponse({ error: 'Failed to communicate with background page' });
     } else {
       sendResponse(response);
     }
@@ -106,8 +129,8 @@ function sendMessageToBackgroundPage(message, sendResponse) {
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'toBackground') {
-    console.log("SERVICE WORKER: ", message);
-    
+    log("SERVICE WORKER: ", message);
+
     checkBackgroundPageIsOpen().then((isOpen) => {
       if (!isOpen) {
         ensureBackgroundPageIsOpen().then(() => {
@@ -119,35 +142,67 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           }
         }).catch(error => {
           console.error("Error ensuring background page is open:", error);
-          sendResponse({error: 'Failed to open background page'});
+          sendResponse({ error: 'Failed to open background page' });
         });
       } else {
         sendMessageToBackgroundPage(message, sendResponse);
       }
     });
-    
+
+    return true; // Indicates that the response will be sent asynchronously
+  } else if (message.type === 'checkBackgroundPage') {
+    // New message type to handle background page check
+    checkBackgroundPageIsOpen().then((isOpen) => {
+      if (isOpen) {
+        sendResponse({ alreadyOpen: true, tabId: backgroundPageTabId });
+      } else {
+        sendResponse({ alreadyOpen: false });
+      }
+    });
     return true; // Indicates that the response will be sent asynchronously
   }
 });
 
 // Ensure the background page is opened when the extension starts
 chrome.runtime.onInstalled.addListener(() => {
-  console.log("Extension installed, opening background page");
+  log("Extension installed, opening background page");
   ensureBackgroundPageIsOpen();
 });
 
-chrome.runtime.onStartup.addListener(() => {
-  console.log("Extension starting up, opening background page");
-  ensureBackgroundPageIsOpen();
+chrome.runtime.onStartup.addListener(async () => {
+  log("Extension starting up, opening background page");
+  await ensureBackgroundPageIsOpen();
+  
+  // Periodically check and ensure only one background page is open
+  setInterval(async () => {
+    await checkBackgroundPageIsOpen();
+  }, 60000); // Check every minute
 });
 
 // Initialize the icon state on service worker startup
-chrome.tabs.query({url: chrome.runtime.getURL('background.html')}, async (tabs) => {
+chrome.tabs.query({ url: chrome.runtime.getURL('background.html') }, async (tabs) => {
   if (tabs.length > 0) {
     backgroundPageTabId = tabs[0].id;
     backgroundPageTabIdLoaded = true;
     await updateIconToOn();
   } else {
     await updateIconToOff();
+  }
+});
+
+function isBackgroundPage(tab) {
+  return tab.url === chrome.runtime.getURL('background.html');
+}
+
+chrome.tabs.onCreated.addListener((tab) => {
+  if (isBackgroundPage(tab)) {
+    ensureBackgroundPageIsOpen();
+  }
+});
+
+// Modify the existing chrome.tabs.onUpdated listener
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  if (isBackgroundPage(tab) && changeInfo.status === 'complete') {
+    ensureBackgroundPageIsOpen();
   }
 });

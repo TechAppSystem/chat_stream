@@ -1386,23 +1386,11 @@
 
 				socketserver.onopen = function () {
 					conCon = 1;
-					if (allin == 1) {
-						socketserver.send(JSON.stringify({ join: roomID, out: 3 }));
-						console.log("output channel: 3, input channel: default");
-					} else if (allin == 2) {
-						socketserver.send(JSON.stringify({ join: roomID, out: 3, in: 1 }));
-						console.log("output channel: 3, input channel: 1");
-					} else {
-						socketserver.send(JSON.stringify({ join: roomID, out: 3, in: 2 })); // main default
-						console.log("output channel: 3, input channel: 2");
-					}
-					
+					socketserver.send(JSON.stringify({ join: roomID, out: 11, in: 12 }));
 				};
+				
 				socketserver.addEventListener("message", function (event) {
 					if (event.data) {
-					
-						
-						
 						if (typeof event.data !== "object") {
 							var data = JSON.parse(event.data);
 						} else {
@@ -1469,6 +1457,8 @@
 
 			var speechLang = "en-US";
 			var speech = false;
+			
+			
 			var English = true;
 			var voice = false;
 			var voices = window.speechSynthesis.getVoices();
@@ -1498,7 +1488,7 @@
 					document.getElementById("tts").classList.remove("hidden");
 					document.getElementById("tts").classList.add("pressed");
 				}
-				var speech = true;
+				speech = true;
 				speechLang = urlParams.get("speech") || urlParams.get("speak") || urlParams.get("tts") || readDonos || newmembertts || ttsclicked || "en-US";
 				if (speechLang.split("-")[0].toLowerCase() == "en") {
 					English = true;
@@ -1521,6 +1511,8 @@
 				ttsSpeakChatname = false;
 				English = false;
 			}
+			
+			var speechOriginal = speech;
 
 			if (urlParams.has("simpletts")) {
 				English = false;
@@ -1557,21 +1549,6 @@
 			var voiceName = false;
 			if (urlParams.has("voice")) {
 				voiceName = urlParams.get("voice") || "google";
-			}
-			
-			var voiceNameGoogle = false;
-			if (urlParams.has("voicegoogle")) {
-				voiceNameGoogle = urlParams.get("voicegoogle");
-			}
-			
-			var voiceNameElevenlabs = false;
-			if (urlParams.has("voice11")) {
-				voiceNameElevenlabs = urlParams.get("voice11");
-			}
-			
-			var voiceNameSpeechify = false;
-			if (urlParams.has("voicespeechify")) {
-				voiceNameSpeechify = urlParams.get("voicespeechify");
 			}
 
 			var voiceGender = false;
@@ -1739,7 +1716,7 @@
 					let model = English ? "simba-english" : "simba-multilingual";
 					const data = {
 						input: "<speak>" + tts + "</speak>",
-						voice_id: voiceNameSpeechify || voiceName || "henry",
+						voice_id: voiceName || "henry",
 						model: model,
 						audio_format: "mp3"
 					};
@@ -1814,8 +1791,8 @@
 					}
 				};
 
-				if (voiceName || voiceNameGoogle) {
-					data.voice.name = voiceNameGoogle || voiceName;
+				if (voiceName) {
+					data.voice.name = voiceName;
 				}
 				if (voiceGender) {
 					data.voice.ssmlGender = voiceGender.toUpperCase();
@@ -1848,7 +1825,7 @@
 					});
 			}
 			function ElevenLabsTTS(tts) {
-				const voiceid = voiceNameElevenlabs || voiceName || "VR6AewLTigWG4xSOukaG";
+				const voiceid = voiceName || "VR6AewLTigWG4xSOukaG";
 				const url = "https://api.elevenlabs.io/v1/text-to-speech/" + voiceid + "/stream?optimize_streaming_latency=" + voiceLatency;
 
 				var data = {
@@ -1899,12 +1876,7 @@
 			function RecvDataWindow() {
 				var iframe = document.createElement("iframe");
 
-				if (pseudodock) {
-					iframe.src = "https://vdo.socialstream.ninja/?ln&salt=vdo.ninja&password=" + password + lanonly + "&push&notmobile&label=dock&vd=0&ad=0&novideo&noaudio&autostart&cleanoutput&room=" + roomID; // push and view, as we will connect with other docks also.
-					// iframe.src = "https://vdo.socialstream.ninja/?ln&password="+password+"&notmobile&salt=vdo.ninja&label=overlay&exclude="+roomID+"&scene&novideo&noaudio&cleanoutput&room="+roomID; // exclude raw feed; we only want selected inputs.
-				} else {
-					iframe.src = "https://vdo.socialstream.ninja/?ln&password=" + password + lanonly + "&notmobile&salt=vdo.ninja&label=overlay&exclude=" + roomID + "&scene&novideo&noaudio&cleanoutput&room=" + roomID; // exclude raw feed; we only want selected inputs.
-				}
+				iframe.src = "https://vdo.socialstream.ninja/?ln&salt=vdo.ninja&password=" + password + lanonly + "&push&notmobile&label=bot&view=" + roomID + "&vd=0&ad=0&novideo&noaudio&autostart&cleanoutput&room=" + roomID;
 
 				iframe.style.width = "0px";
 				iframe.style.height = "0px";
@@ -1925,14 +1897,17 @@
 					} // reject messages send from other iframes
 					if ("dataReceived" in e.data) {
 						// raw data
+						
 						if ("overlayNinja" in e.data.dataReceived) {
 							try {
 								if (applyCustomFeatureActions) {
-									applyCustomFeatureActions(e.data.dataReceived.overlayNinja);
+									applyCustomFeatureActions(e.data.dataReceived.overlayNinja); 
 								}
 							} catch (e) {
 								console.error(e);
 							}
+							
+							
 
 							//console.log(e.data.dataReceived.overlayNinja);
 							if (e.data.dataReceived.overlayNinja && "response" in e.data.dataReceived.overlayNinja) {
@@ -2447,8 +2422,10 @@
 								} catch (e) {}
 							}
 							document.getElementById("output").classList.remove(transitionType);
-
 							
+							if ("tts" in data){
+								speech = speechOriginal || (data.tts ? true : false);
+							}
 							
 							if (speech) {
 								var msgPlain = document.getElementById("message"); // text only

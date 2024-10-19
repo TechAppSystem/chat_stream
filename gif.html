@@ -35,6 +35,10 @@
             max-height: 100%;
             object-fit: contain;
         }
+		img,svg,video{
+			max-height:100vh;
+			max-width:100vw;
+		}
     </style>
 </head>
 <body>
@@ -47,9 +51,12 @@
         const mediaContent = document.getElementById('mediaContent');
         let mediaQueue = [];
         let isPlaying = false;
+        const minDisplayTime = parseInt(urlParams.get('showtime')) || 5000; 
+		
+		const fadeoutTime = 300
 
         function processData(data) {
-            console.log(data);
+           //console.log(data);
             
             if (data.content) {
                 data = data.content;
@@ -81,47 +88,131 @@
         }
 
         function playNextMedia() {
-            if (mediaQueue.length === 0) {
-                isPlaying = false;
-                return;
-            }
+			if (mediaQueue.length === 0) {
+				isPlaying = false;
+				return;
+			}
 
-            isPlaying = true;
-            const mediaUrl = mediaQueue.shift();
-            const fileExtension = mediaUrl.split('.').pop().toLowerCase();
+			isPlaying = true;
+			let mediaUrl = mediaQueue.shift();
+			
+			
+			const youtubeVideoId = getYouTubeVideoId(mediaUrl);
+			if (youtubeVideoId) {
+				mediaUrl = createYouTubeEmbed(youtubeVideoId);
+			}
 
-            if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(fileExtension)) {
-                displayImage(mediaUrl);
-            } else if (['mp4', 'webm'].includes(fileExtension)) {
-                displayVideo(mediaUrl);
-            } else if (['mp3', 'wav', 'ogg'].includes(fileExtension)) {
-                playAudio(mediaUrl);
-            } else if (fileExtension === 'svg') {
-                displaySVG(mediaUrl);
-			} else if (mediaUrl.split('/').pop().split('.').length==1){
-				displayImage(mediaUrl); // lets assume its an image
-			} else if (mediaUrl.split('/').pop().split('.').pop().length>4){
-				displayImage(mediaUrl); // lets assume its an image
-            } else {
-                console.error('Unsupported file type:', fileExtension);
-                playNextMedia();
-            }
-        }
+			if (isEmbeddedContent(mediaUrl)) {
+				displayEmbeddedContent(mediaUrl);
+			} else {
+				const fileExtension = mediaUrl.split('.').pop().toLowerCase();
+
+				if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(fileExtension)) {
+					displayImage(mediaUrl);
+				} else if (['mp4', 'webm'].includes(fileExtension)) {
+					displayVideo(mediaUrl);
+				} else if (['mp3', 'wav', 'ogg'].includes(fileExtension)) {
+					playAudio(mediaUrl);
+				} else if (fileExtension === 'svg') {
+					displaySVG(mediaUrl);
+				} else if (fileExtension === 'html' || mediaUrl.split('/').pop().split('.').length == 1) {
+					displayEmbeddedContent(mediaUrl);
+				} else if (mediaUrl.split('/').pop().split('.').pop().length > 4) {
+					displayImage(mediaUrl);
+				} else {
+					console.error('Unsupported file type:', fileExtension);
+					playNextMedia();
+				}
+			}
+		}
+
+		function isEmbeddedContent(content) {
+			return content.includes('<iframe') || content.includes('<embed');
+		}
+		
+		function getYouTubeVideoId(url) {
+			const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+			const match = url.match(regExp);
+			return (match && match[2].length === 11) ? match[2] : null;
+		}
+
+		function createYouTubeEmbed(videoId) {
+			return `<iframe src="https://www.youtube.com/embed/${videoId}?autoplay=1" frameborder="0" allow="autoplay; encrypted-media" allowfullscreen></iframe>`;
+		}
+
+		function displayEmbeddedContent(content) {
+			let embedElement;
+			if (content.startsWith('http') || content.endsWith('.html')) {
+				embedElement = document.createElement('iframe');
+				embedElement.src = content;
+			} else {
+				const tempDiv = document.createElement('div');
+				tempDiv.innerHTML = content;
+				embedElement = tempDiv.querySelector('iframe, embed');
+				if (!embedElement) {
+					console.error('Invalid embedded content');
+					playNextMedia();
+					return;
+				}
+			}
+
+			let src = embedElement.src;
+			for (let i = embedElement.attributes.length - 1; i >= 0; i--) {
+				embedElement.removeAttribute(embedElement.attributes[i].name);
+			}
+			
+			if (src.includes('youtube.com') || src.includes('youtu.be')) {
+				const urlObj = new URL(src);
+				urlObj.searchParams.set('autoplay', '1');
+				src = urlObj.toString();
+			}
+			
+			embedElement.src = src;
+
+			embedElement.style.width = '100%';
+			embedElement.style.height = '100%';
+			embedElement.style.border = 'none';
+			embedElement.setAttribute("allow","autoplay");
+
+			embedElement.replaceWith(embedElement.cloneNode(true));
+
+			mediaContainer.innerHTML = '';
+			mediaContainer.appendChild(embedElement);
+			fadeIn();
+
+			setTimeout(() => {
+				fadeOut(() => {
+					mediaContainer.innerHTML = '';
+					mediaContainer.appendChild(mediaContent);
+					playNextMedia();
+				});
+			}, minDisplayTime);
+		}
 
         function displayImage(url) {
-            mediaContent.onload = () => {
+            const img = new Image();
+            img.onload = () => {
+                mediaContent.src = url;
                 fadeIn();
-                setTimeout(() => {
-                    fadeOut(() => playNextMedia());
-                }, 5000);
+                if (url.toLowerCase().endsWith('.gif')) {
+                    const gifDuration = getGifDuration(img);
+                    const displayTime = Math.max(gifDuration, minDisplayTime);
+                    setTimeout(() => {
+                        fadeOut(() => playNextMedia());
+                    }, displayTime);
+                } else {
+                    setTimeout(() => {
+                        fadeOut(() => playNextMedia());
+                    }, minDisplayTime);
+                }
             };
-            mediaContent.onerror = () => {
+            img.onerror = () => {
                 console.error('Failed to load image:', url);
                 playNextMedia();
             };
-            mediaContent.src = url;
+            img.src = url;
         }
-
+		
         function displayVideo(url) {
             const video = document.createElement('video');
             video.src = url;
@@ -130,12 +221,29 @@
                 mediaContent.replaceWith(video);
                 fadeIn();
                 video.play();
-            };
-            video.onended = () => {
-                fadeOut(() => {
-                    video.replaceWith(mediaContent);
-                    playNextMedia();
-                });
+                const videoDuration = video.duration * 1000; 
+                const displayTime = Math.max(videoDuration, minDisplayTime);
+                setTimeout(() => {
+                    if (videoDuration < minDisplayTime) {
+                        video.loop = true;
+                        setTimeout(() => {
+                            video.loop = false;
+                            video.onended = () => {
+                                fadeOut(() => {
+                                    video.replaceWith(mediaContent);
+                                    playNextMedia();
+                                });
+                            };
+                        }, minDisplayTime - videoDuration);
+                    } else {
+                        video.onended = () => {
+                            fadeOut(() => {
+                                video.replaceWith(mediaContent);
+                                playNextMedia();
+                            });
+                        };
+                    }
+                }, 0);
             };
             video.onerror = () => {
                 console.error('Failed to load video:', url);
@@ -185,7 +293,7 @@
 
         function fadeOut(callback) {
             mediaContainer.style.opacity = '0';
-            setTimeout(callback, 500);
+            setTimeout(callback, fadeoutTime); // 200
         }
 
         const iframe = document.createElement("iframe");
@@ -220,6 +328,103 @@
                 }
             }
         });
+		
+		function getUint24(view, pos) {
+            return (view.getUint8(pos) | (view.getUint8(pos + 1) << 8) | (view.getUint8(pos + 2) << 16));
+        }
+
+        function getWebPDuration(arr) {
+            const view = new DataView(arr.buffer);
+            let pos = 12; // Skip RIFF header
+            let duration = 0;
+            let frames = 0;
+            let loopCount = 0;
+
+            while (pos < arr.length) {
+                const chunkId = String.fromCharCode(arr[pos], arr[pos+1], arr[pos+2], arr[pos+3]);
+                const chunkSize = view.getUint32(pos + 4, true);
+
+                if (chunkId === 'VP8X') {
+                    const flags = view.getUint32(pos + 8, true);
+                    if (!(flags & 2)) {
+                        console.warn('Not an animated WebP');
+                        return minDisplayTime;
+                    }
+                } else if (chunkId === 'ANIM') {
+                    loopCount = view.getUint16(pos + 12, true);
+                    // console.log('Loop count:', loopCount === 0 ? 'infinite' : loopCount);
+                } else if (chunkId === 'ANMF') {
+                    frames++;
+                    const frameDuration = getUint24(view, pos + 20);
+                    duration += frameDuration;
+                    // console.log(`Frame ${frames}: duration: ${frameDuration}ms`);
+                }
+
+                pos += 8 + chunkSize;
+                if (chunkSize % 2 !== 0) pos++; // Padding byte
+            }
+            if (duration) {
+                duration = Math.max(fadeoutTime,Math.max(Math.ceil(minDisplayTime/duration)*duration)-fadeoutTime/1.5);
+				duration = Math.min((minDisplayTime+fadeoutTime)*5,duration); // won't be 5x longer then the min time; 10s?
+            } else {
+                duration = minDisplayTime;
+            }
+			
+            return duration;
+        }
+		
+		function analyzeAnimatedImage(blob, callback) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const arr = new Uint8Array(e.target.result);
+                if (blob.type === 'image/webp') {
+					try{
+						const duration = getWebPDuration(arr);
+						callback(duration);
+					} catch(e){
+						callback(minDisplayTime);
+					}
+                } else {
+                    console.warn('Unsupported animated image format');
+                    callback(minDisplayTime);
+                }
+            };
+            reader.readAsArrayBuffer(blob);
+        }
+
+        function displayImage(url) {
+            fetch(url)
+                .then(response => response.blob())
+                .then(blob => {
+                    const objectURL = URL.createObjectURL(blob);
+                    mediaContent.onload = () => {
+                        fadeIn();
+                        if (url.toLowerCase().endsWith('.webp')) {
+                            analyzeAnimatedImage(blob, (duration) => {
+                                const displayTime = Math.max(duration, minDisplayTime);
+                                setTimeout(() => {
+                                    fadeOut(() => {
+                                        URL.revokeObjectURL(objectURL);
+                                        playNextMedia();
+                                    });
+                                }, displayTime);
+                            });
+                        } else {
+                            setTimeout(() => {
+                                fadeOut(() => {
+                                    URL.revokeObjectURL(objectURL);
+                                    playNextMedia();
+                                });
+                            }, minDisplayTime);
+                        }
+                    };
+                    mediaContent.src = objectURL;
+                })
+                .catch(error => {
+                    console.error('Failed to load image:', url, error);
+                    playNextMedia();
+                });
+        }
     </script>
 </body>
 </html>

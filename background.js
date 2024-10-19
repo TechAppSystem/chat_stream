@@ -1,3 +1,12 @@
+try {
+	if (document.title=="Keep Open - Social Stream Ninja"){
+		window.close();
+	}
+	if (document.title == "Close me - Social Stream Ninja"){
+		window.close();
+	}
+} catch(e){}
+
 var isExtensionOn = false;
 var iframe = null;
 
@@ -226,10 +235,12 @@ if (typeof chrome.runtime == "undefined") {
 		});
 	});
 
-	fetchNode = async function (URL, headers = {}) {
-		return await ipcRenderer.sendSync("nodepost", {
+	fetchNode = function (URL, headers = {}, method = 'GET', body = null) {
+		return ipcRenderer.sendSync("nodefetch", {
 			url: URL,
-			headers: headers
+			headers: headers,
+			method: method,
+			body: body
 		});
 	};
 
@@ -1130,9 +1141,11 @@ var intervalMessages = {};
 
 function updateExtensionState(sync = true) {
 	log("updateExtensionState", isExtensionOn);
+	
+	document.title = "Keep Open - Social Stream Ninja";
 
 	if (isExtensionOn) {
-
+		
 		if (chrome.browserAction && chrome.browserAction.setIcon){
 			chrome.browserAction.setIcon({ path: "/icons/on.png" });
 		}
@@ -1145,6 +1158,9 @@ function updateExtensionState(sync = true) {
 		setupSocket();
 		setupSocketDock();
 	} else {
+		
+		// document.title = "Idle - Social Stream Ninja";
+		
 		if (iframe) {
 			iframe.src = null;
 			iframe.remove();
@@ -1322,6 +1338,7 @@ async function getPronounsNames(username = "") {
 
 var Globalbttv = false;
 var Globalseventv = false;
+var Globalffz = false;
 
 async function getBTTVEmotes(url = false) {
 	var type = "";
@@ -1692,6 +1709,143 @@ async function getSEVENTVEmotes(url = false) {
 	return seventv;
 }
 
+async function getFFZEmotes(url = false) {
+	var type = "";
+	var ffz = {};
+	var userID = false;
+
+	try {
+		if (url && url.includes("youtube.com/")) {
+			type = "youtube";
+		} else if (url && url.includes("twitch.tv/")) {
+			type = "twitch";
+		}
+
+		if (type == "youtube") {
+			// YouTube functionality remains largely the same
+			var vid = false;
+			if (url) {
+				vid = YouTubeGetID(url);
+			}
+
+			if (vid) {
+				userID = localStorage.getItem("vid2uid:" + vid);
+
+				if (!userID) {
+					userID = await fetch("https://api.socialstream.ninja/youtube/user?video=" + vid)
+						.then(result => result.text())
+						.catch(err => {
+							console.error(err);
+						});
+					if (userID) {
+						localStorage.setItem("vid2uid:" + vid, userID);
+					} else {
+						return false;
+					}
+				}
+				if (userID) {
+					ffz = getItemWithExpiry("uid2ffz.youtube:" + userID);
+					if (!ffz) {
+						// Use FFZ API to get user's emotes
+						ffz = await fetch(`https://api.frankerfacez.com/v1/room/yt/${userID}`)
+							.then(result => result.json())
+							.catch(err => {
+								console.error(err);
+							});
+
+						if (ffz && ffz.sets) {
+							ffz.channelEmotes = Object.values(ffz.sets).flatMap(set => 
+								set.emoticons.map(emote => ({
+									[emote.name]: {
+										url: emote.urls["1"], // Use 1x size as default
+										zw: emote.modifier // FFZ uses 'modifier' flag for zero-width emotes
+									}
+								}))
+							).reduce((acc, curr) => Object.assign(acc, curr), {});
+
+							setItemWithExpiry("uid2ffz.youtube:" + userID, ffz);
+						}
+					}
+				}
+			}
+		} else if (type == "twitch") {
+			var username = url.split("popout/");
+
+			if (username.length > 1) {
+				username = username[1].split("/")[0];
+				log("username: " + username);
+				if (username) {
+					ffz = getItemWithExpiry("uid2ffz.twitch:" + username.toLowerCase());
+					log("FFZ2", ffz);
+					if (!ffz || ffz.message) {
+						// Use FFZ API to get user's emotes
+						ffz = await fetch(`https://api.frankerfacez.com/v1/room/${username}`)
+							.then(result => result.json())
+							.catch(err => {
+								console.error(err);
+							});
+
+						if (ffz && ffz.sets) {
+							ffz.channelEmotes = Object.values(ffz.sets).flatMap(set => 
+								set.emoticons.map(emote => ({
+									[emote.name]: {
+										url: emote.urls["3"] || emote.urls["2"] || emote.urls["1"], // Use 1x size as default
+										zw: emote.modifier // FFZ uses 'modifier' flag for zero-width emotes
+									}
+								}))
+							).reduce((acc, curr) => Object.assign(acc, curr), {});
+
+							setItemWithExpiry("uid2ffz.twitch:" + username.toLowerCase(), ffz);
+						} else {
+							ffz = {};
+						}
+						log("FFZ", ffz);
+					} else {
+						log("ffz recovered from storage");
+					}
+				}
+			}
+		}
+
+		if (!Globalffz) {
+			Globalffz = getItemWithExpiry("globalffz");
+
+			if (!Globalffz) {
+				// Use FFZ API to get global emotes
+				Globalffz = await fetch("https://api.frankerfacez.com/v1/set/global")
+					.then(result => result.json())
+					.catch(err => {
+						console.error(err);
+					});
+				if (Globalffz && Globalffz.sets) {
+					Globalffz = Object.values(Globalffz.sets).flatMap(set => 
+						set.emoticons.map(emote => ({
+							[emote.name]: {
+								url: emote.urls["1"], // Use 1x size as default
+								zw: emote.modifier // FFZ uses 'modifier' flag for zero-width emotes
+							}
+						}))
+					).reduce((acc, curr) => Object.assign(acc, curr), {});
+					setItemWithExpiry("globalffz", Globalffz);
+				} else {
+					Globalffz = {};
+				}
+			} else {
+				log("Globalffz recovered from storage");
+			}
+		}
+		if (Globalffz){
+			ffz.globalEmotes = Globalffz;
+		}
+		ffz.url = url;
+		ffz.type = type;
+		ffz.user = userID;
+	} catch (e) {
+		console.error(e);
+	}
+	return ffz;
+}
+
 const emoteRegex = /(?<=^|\s)(\S+?)(?=$|\s)/g;
 
 function replaceEmotesWithImages(message, emotesMap, zw = false) {
@@ -1836,7 +1990,7 @@ chrome.runtime.onMessage.addListener(async function (request, sender, sendRespon
 		}
 		response = msg;
 	}
-	log("processing messge:", request);
+	
 	try {
 		if (typeof request !== "object") {
 			//sendResponse({"state": isExtensionOn});
@@ -1970,6 +2124,10 @@ chrome.runtime.onMessage.addListener(async function (request, sender, sendRespon
 			if (request.setting == "textonlymode") {
 				pushSettingChange();
 			}
+			if (request.setting == "ignorealternatives") {
+				pushSettingChange();
+			}
+			
 			if (request.setting == "ticker") {
 				try {
 					await loadFileTicker();
@@ -2014,6 +2172,9 @@ chrome.runtime.onMessage.addListener(async function (request, sender, sendRespon
 			if (request.setting == "delayyoutube") {
 				pushSettingChange();
 			}
+			if (request.setting == "delaykick") {
+				pushSettingChange();
+			}
 			if (request.setting == "customtwitchaccount") {
 				pushSettingChange();
 			}
@@ -2041,7 +2202,7 @@ chrome.runtime.onMessage.addListener(async function (request, sender, sendRespon
 			if (request.setting == "customyoutubeaccount") {
 				pushSettingChange();
 			}
-			if (request.setting == "myname") {
+			if (request.setting == "mynameext") {
 				pushSettingChange();
 			}
 			if (request.setting == "nosubcolor") {
@@ -2066,6 +2227,14 @@ chrome.runtime.onMessage.addListener(async function (request, sender, sendRespon
 					clearAllWithPrefix("uid2seventv.twitch:");
 					clearAllWithPrefix("uid2seventv.youtube:");
 					await getSEVENTVEmotes();
+				}
+				pushSettingChange();
+			}
+			if (request.setting == "ffz") {
+				if (settings.ffz) {
+					clearAllWithPrefix("uid2ffz.twitch:");
+					clearAllWithPrefix("uid2ffz.youtube:");
+					await getFFZEmotes();
 				}
 				pushSettingChange();
 			}
@@ -2095,6 +2264,14 @@ chrome.runtime.onMessage.addListener(async function (request, sender, sendRespon
 			
 			if (request.setting == "pollEnabled") {
 				initializePoll();
+			}
+			
+			//if (request.setting == "ollamatts") {
+			//	sendTargetP2P({settings:settings}, "bot");
+			//}
+			
+			if (request.setting == "wordcloud") {
+				setWordcloud(request.value);
 			}
 
 			if (request.setting == "customwaitlistmessagetoggle" || request.setting == "customwaitlistmessage" || request.setting == "customwaitlistcommand") {
@@ -2297,6 +2474,20 @@ chrome.runtime.onMessage.addListener(async function (request, sender, sendRespon
 					//	console.log(sender);
 					//	console.log(SEVENTV2);
 					chrome.tabs.sendMessage(sender.tab.id, { SEVENTV: SEVENTV2 }, function (response = false) {
+						chrome.runtime.lastError;
+					});
+				}
+			}
+		} else if ("getFFZ" in request) {
+			// forwards messages from Youtube/Twitch/Facebook to the remote dock via the VDO.Ninja API
+			//console.log("getFFZ");
+			sendResponse({ state: isExtensionOn });
+			if (sender.tab.url) {
+				var FFZ2 = await getFFZEmotes(sender.tab.url); // query my API to see if I can resolve the Channel avatar from the video ID
+				if (FFZ2) {
+					//	console.log(sender);
+					//	console.log(FFZ2);
+					chrome.tabs.sendMessage(sender.tab.id, { FFZ: FFZ2 }, function (response = false) {
 						chrome.runtime.lastError;
 					});
 				}
@@ -2542,6 +2733,23 @@ chrome.runtime.onMessage.addListener(async function (request, sender, sendRespon
 			// isSSAPP
 
 			sendResponse({ state: isExtensionOn });
+		} else if (request.cmd && (request.cmd === 'uploadBadwords')) {
+			localStorage.setItem('customBadwords', request.data);
+			try {
+				let customBadWordsList = request.data.split(/\r?\n|\r|\n/g);
+				customBadWordsList = generateVariationsList(customBadWordsList);
+				profanityHashTable = createProfanityHashTable(customBadWordsList);
+				sendResponse({success: true, state: isExtensionOn });
+			} catch(e){
+				sendResponse({success: false, state: isExtensionOn });
+			}
+		} else if (request.cmd && (request.cmd === 'deleteBadwords')) {
+			localStorage.removeItem('customBadwords');
+			initialLoadBadWords();
+			sendResponse({success: true, state: isExtensionOn });
+		} else if (request.cmd && request.target){
+			sendResponse({ state: isExtensionOn });
+			sendTargetP2P(request, request.target);
 		} else {
 			sendResponse({ state: isExtensionOn });
 		}
@@ -2741,6 +2949,14 @@ async function sendToDestinations(message) {
 						message.chatmessage = replaceEmotesWithImages(message.chatmessage, Globalseventv, true);
 					}
 				}
+				if (settings.ffz) {
+					if (!Globalffz) {
+						await getFFZEmotes();
+					}
+					if (Globalffz) {
+						message.chatmessage = replaceEmotesWithImages(message.chatmessage, Globalffz, true);
+					}
+				}
 				message.chatmessage = filterXSS(message.chatmessage);
 			} //else {
 			// replaceEmotesWithImagesText( ...  ); // maybe someday
@@ -2790,6 +3006,14 @@ async function sendToDestinations(message) {
 	try {
 		if (settings.pollEnabled){
 			sendTargetP2P(message, "poll");
+		}
+	} catch (e) {
+		console.error(e);
+	}
+	
+	try {
+		if (settings.wordcloud){
+			sendTargetP2P(message, "wordcloud");
 		}
 	} catch (e) {
 		console.error(e);
@@ -2929,6 +3153,8 @@ function sendToS10(data, fakechat=false, relayed=false) {
 				return null;
 			}
 			
+			
+			
 			const StageTEN_API_URL = "https://demo.stageten.tv/apis/plugin-service/chat/message/send"
 
 			let cleaned = data.chatmessage;
@@ -2942,19 +3168,12 @@ function sendToS10(data, fakechat=false, relayed=false) {
 				return;
 			}
 			
-			// console.error(cleaned, data,data.textonly);
-			
 			if (relayed && !verifyOriginalNewIncomingMessage(cleaned, true)){
+				if (data.bot) {
+					return null;
+				}
 				if (checkExactDuplicateAlreadySent(cleaned, true)){
 					return;
-				}
-				
-				if (settings.myname) {
-					let custombot = settings.myname.textparam1.toLowerCase().replace(/[^a-z0-9,_]+/gi, ""); // this won't work with names that are special
-					custombot = custombot.split(",");
-					if (custombot.includes(data.chatname.toLowerCase().replace(/[^a-z0-9_]+/gi, ""))) {
-						return null;
-					}
 				}
 			} else if (!fakechat && checkExactDuplicateAlreadySent(cleaned, true)){
 				return null;
@@ -3082,7 +3301,7 @@ function setupSocketDock() {
 	} else if (!isExtensionOn) {
 		return;
 	}
-
+	
 	if (reconnectionTimeoutDock) {
 		clearTimeout(reconnectionTimeoutDock);
 		reconnectionTimeoutDock = null;
@@ -3150,7 +3369,7 @@ function setupSocket() {
 	} else if (!isExtensionOn) {
 		return;
 	}
-
+	
 	if (reconnectionTimeout) {
 		clearTimeout(reconnectionTimeout);
 		reconnectionTimeout = null;
@@ -3740,7 +3959,13 @@ function processWaitlist(data) {
 	}
 }
 
-
+function setWordcloud(state=true) {
+	try {
+		if (isExtensionOn){
+			sendTargetP2P({state:state}, "wordcloud");
+		}
+	} catch (e) {}
+}
 
 function initializePoll() {
 	try {
@@ -4106,7 +4331,7 @@ function onAttach(debuggeeId, callback, message, a = null, b = null, c = null) {
 	}
 }
 
-async function processIncomingRequest(request, UUID = false) {
+async function processIncomingRequest(request, UUID = false) { // from the dock or chat bot, etc.
 	if (settings.disablehost) {
 		return;
 	}
@@ -4190,6 +4415,14 @@ async function processIncomingRequest(request, UUID = false) {
 							}
 						} catch (e) {}
 					}
+					
+					let ttsTab = {};
+					ttsTab.url = "";
+					ttsTab.id = "TTS";
+					ttsTab.title = "Text to Speech your message";
+					ttsTab.favIconUrl = "./icons/tts_incoming_messages_on.png";
+					
+					tabsList.push(ttsTab)
 
 					sendDataP2P({ tabsList: tabsList }, UUID);
 				});
@@ -4203,31 +4436,26 @@ async function processIncomingRequest(request, UUID = false) {
 		} else if (request.value && ("target" in request) && UUID && request.action === "chatbot"){ // target is the callback ID
 			if (isExtensionOn && settings.allowChatBot){
 				try {
-					let model = "vanilj/llama-3.1-70b-instruct-lorablated-iq2_xs:latest"
-					let prompt = request.value;
-					if (request.turbo){
-						model = "rolandroland/llama3.1-uncensored"; // a faster model
-						prompt = "You're an AI assistant. Keep responses limited to a few sentences.\n"+prompt;
-					}
-					if (request.model){
-						model = request.model; // a faster model
-					}
-					model = settings.ollamamodel?.textsetting || model; // if you manually set it via the settings
-					callOllamaAPI(prompt, model, (chunk) => {
-						//console.log("Received chunk:", chunk);
-						sendDataP2P({ chatbotChunk: {value: chunk, target: request.target}}, UUID);
-						// Process the chunk as needed
-					}).then((fullResponse) => {
-						//console.log("Full response:", fullResponse);
-						sendDataP2P({ chatbotResponse: {value: fullResponse, target: request.target}}, UUID);
-					}).catch((error) => {
-						console.error("Error:", error);
-					});
-					//let resp = await callOllamaAPI(prompt, model); // will default to first available model if not found.
-					// console.log({ chatbotResponse: {value: resp, target: request.target}}, UUID);
-					
-				} catch(e){
-					console.error(e);
+				  //    let model = "vanilj/llama-3.1-70b-instruct-lorablated-iq2_xs:latest"
+				  let prompt = request.value || "";
+				  if (request.turbo) {
+				  //	model = "rolandroland/llama3.1-uncensored";
+						prompt = "You're an AI assistant. Keep responses limited to a few sentences.\n" + prompt;
+				  }
+				  let model = request.model || settings.ollamamodel?.textsetting || null;
+				  const controller = new AbortController();
+				  
+				  callOllamaAPI(prompt, model, (chunk) => {
+					sendDataP2P({ chatbotChunk: {value: chunk, target: request.target}}, UUID);
+				  }, controller, UUID).then((fullResponse) => {
+					sendDataP2P({ chatbotResponse: {value: fullResponse, target: request.target}}, UUID);
+				  }).catch((error) => {
+					console.error('Error in callOllamaAPI:', error);
+					sendDataP2P({ chatbotResponse: {value: "🚧", target: request.target}}, UUID);
+				  });
+				} catch(e) {
+				  console.error('Unexpected error:', e);
+				  sendDataP2P({ chatbotResponse: {value: "🚧", target: request.target}}, UUID);
 				}
 			}
 		}
@@ -4371,6 +4599,7 @@ eventer(messageEvent, async function (e) {
 				}
 			} else if (e.data.action === "alert") {
 				if (e.data.value && e.data.value == "Stream ID is already in use.") {
+					document.title = "Close me? - Social Stream Ninja";
 					isExtensionOn = false;
 					updateExtensionState();
 					try {
@@ -4382,8 +4611,10 @@ eventer(messageEvent, async function (e) {
 						});
 						messagePopup({alert: "Your specified Session ID is already in use.\n\nDisable Social Stream elsewhere if already in use first, or change your session ID to something unique."});
 					} catch (e) {
-						
 						console.error(e);
+					}
+					if (!isSSAPP){
+						window.close();
 					}
 				}
 			}
@@ -4768,6 +4999,10 @@ function processResponse(data, reverse = false, metadata = null, relay=false, an
 					
 					if (tabs[i].url.includes("youtube.com/live_chat")) {
 						getYoutubeAvatarImage(tabs[i].url, true); // see if I can pre-cache the channel image, if not loaded.
+					}
+					
+					if (settings.notiktoklinks && tabs[i].url.includes("tiktok.com")) {
+						data.response = replaceURLsWithSubstring(data.response,"");
 					}
 
 					if (!debuggerEnabled[tabs[i].id]) {
@@ -5177,25 +5412,44 @@ function filterProfanity(sentence) {
 	return sentence;
 }
 var profanityHashTable = false;
-try {
-	// use a custom file named badwords.txt to replace the badWords that are hard-coded. one per line.
-	fetch("./badwords.txt")
-		.then(response => response.text())
-		.then(text => {
-			let customBadWords = text.split(/\r?\n|\r|\n/g);
-			customBadWords = generateVariationsList(customBadWords);
-			profanityHashTable = createProfanityHashTable(customBadWords);
-		})
-		.catch(error => {
-			badWords = generateVariationsList(badWords);
-			profanityHashTable = createProfanityHashTable(badWords);
-		});
-} catch (e) {
-	badWords = generateVariationsList(badWords);
-	profanityHashTable = createProfanityHashTable(badWords);
+
+function initialLoadBadWords(){
+	try {
+		// use a custom file named badwords.txt to replace the badWords that are hard-coded. one per line.
+		fetch("./badwords.txt")
+			.then(response => response.text())
+			.then(text => {
+				let customBadWords = text.split(/\r?\n|\r|\n/g);
+				customBadWords = generateVariationsList(customBadWords);
+				profanityHashTable = createProfanityHashTable(customBadWords);
+			})
+			.catch(error => {
+				try {
+					  const customBadwords = localStorage.getItem('customBadwords');
+					  if (customBadwords) {
+						let customBadWordsList = customBadwords.split(/\r?\n|\r|\n/g);
+						customBadWordsList = generateVariationsList(customBadWordsList);
+						profanityHashTable = createProfanityHashTable(customBadWordsList);
+					  } else {
+						// Use default badwords if no custom file is present
+						badWords = generateVariationsList(badWords);
+						profanityHashTable = createProfanityHashTable(badWords);
+					  }
+				} catch (e) {
+				  badWords = generateVariationsList(badWords);
+				  profanityHashTable = createProfanityHashTable(badWords);
+				}
+
+			});
+	} catch (e) {
+		badWords = generateVariationsList(badWords);
+		profanityHashTable = createProfanityHashTable(badWords);
+	}
 }
+initialLoadBadWords();
 
 /////// end of bad word filter
+
 
 var goodWordsHashTable = false;
 function isGoodWord(word) {
@@ -5229,6 +5483,47 @@ try {
 			// no file found or error
 		});
 } catch (e) {}
+
+
+const validTLDs = new Set(["a","aaa","aarp","abb","abbott","abbvie","abc","able","abogado","abudhabi","ac","academy","accenture","accountant","accountants","aco","actor","ad","ads","adult","ae","aeg","aero","aetna","af","afl","africa","ag","agakhan","agency","ai","aig","airbus","airforce","airtel","akdn","al","alibaba","alipay","allfinanz","allstate","ally","alsace","alstom","am","amazon","americanexpress","americanfamily","amex","amfam","amica","amsterdam","analytics","android","anquan","anz","ao","aol","apartments","app","apple","aq","aquarelle","ar","arab","aramco","archi","army","arpa","art","arte","as","asda","asia","associates","at","athleta","attorney","au","auction","audi","audible","audio","auspost","author","auto","autos","aw","aws","ax","axa","az","azure","b","ba","baby","baidu","banamex","band","bank","bar","barcelona","barclaycard","barclays","barefoot","bargains","baseball","basketball","bauhaus","bayern","bb","bbc","bbt","bbva","bcg","bcn","bd","be","beats","beauty","beer","bentley","berlin","best","bestbuy","bet","bf","bg","bh","bharti","bi","bible","bid","bike","bing","bingo","bio","biz","bj","black","blackfriday","blockbuster","blog","bloomberg","blue","bm","bms","bmw","bn","bnpparibas","bo","boats","boehringer","bofa","bom","bond","boo","book","booking","bosch","bostik","boston","bot","boutique","box","br","bradesco","bridgestone","broadway","broker","brother","brussels","bs","bt","build","builders","business","buy","buzz","bv","bw","by","bz","bzh","c","ca","cab","cafe","cal","call","calvinklein","cam","camera","camp","canon","capetown","capital","capitalone","car","caravan","cards","care","career","careers","cars","casa","case","cash","casino","cat","catering","catholic","cba","cbn","cbre","cc","cd","center","ceo","cern","cf","cfa","cfd","cg","ch","chanel","channel","charity","chase","chat","cheap","chintai","christmas","chrome","church","ci","cipriani","circle","cisco","citadel","citi","citic","city","ck","cl","claims","cleaning","click","clinic","clinique","clothing","cloud","club","clubmed","cm","cn","co","coach","codes","coffee","college","cologne","com","commbank","community","company","compare","computer","comsec","condos","construction","consulting","contact","contractors","cooking","cool","coop","corsica","country","coupon","coupons","courses","cpa","cr","credit","creditcard","creditunion","cricket","crown","crs","cruise","cruises","cu","cuisinella","cv","cw","cx","cy","cymru","cyou","cz","d","dabur","dad","dance","data","date","dating","datsun","day","dclk","dds","de","deal","dealer","deals","degree","delivery","dell","deloitte","delta","democrat","dental","dentist","desi","design","dev","dhl","diamonds","diet","digital","direct","directory","discount","discover","dish","diy","dj","dk","dm","dnp","do","docs","doctor","dog","domains","dot","download","drive","dtv","dubai","dunlop","dupont","durban","dvag","dvr","dz","e","earth","eat","ec","eco","edeka","edu","education","ee","eg","email","emerck","energy","engineer","engineering","enterprises","epson","equipment","er","ericsson","erni","es","esq","estate","et","eu","eurovision","eus","events","exchange","expert","exposed","express","extraspace","f","fage","fail","fairwinds","faith","family","fan","fans","farm","farmers","fashion","fast","fedex","feedback","ferrari","ferrero","fi","fidelity","fido","film","final","finance","financial","fire","firestone","firmdale","fish","fishing","fit","fitness","fj","fk","flickr","flights","flir","florist","flowers","fly","fm","fo","foo","food","football","ford","forex","forsale","forum","foundation","fox","fr","free","fresenius","frl","frogans","frontier","ftr","fujitsu","fun","fund","furniture","futbol","fyi","g","ga","gal","gallery","gallo","gallup","game","games","gap","garden","gay","gb","gbiz","gd","gdn","ge","gea","gent","genting","george","gf","gg","ggee","gh","gi","gift","gifts","gives","giving","gl","glass","gle","global","globo","gm","gmail","gmbh","gmo","gmx","gn","godaddy","gold","goldpoint","golf","goo","goodyear","goog","google","gop","got","gov","gp","gq","gr","grainger","graphics","gratis","green","gripe","grocery","group","gs","gt","gu","gucci","guge","guide","guitars","guru","gw","gy","h","hair","hamburg","hangout","haus","hbo","hdfc","hdfcbank","health","healthcare","help","helsinki","here","hermes","hiphop","hisamitsu","hitachi","hiv","hk","hkt","hm","hn","hockey","holdings","holiday","homedepot","homegoods","homes","homesense","honda","horse","hospital","host","hosting","hot","hotels","hotmail","house","how","hr","hsbc","ht","hu","hughes","hyatt","hyundai","i","ibm","icbc","ice","icu","id","ie","ieee","ifm","ikano","il","im","imamat","imdb","immo","immobilien","in","inc","industries","infiniti","info","ing","ink","institute","insurance","insure","int","international","intuit","investments","io","ipiranga","iq","ir","irish","is","ismaili","ist","istanbul","it","itau","itv","j","jaguar","java","jcb","je","jeep","jetzt","jewelry","jio","jll","jm","jmp","jnj","jo","jobs","joburg","jot","joy","jp","jpmorgan","jprs","juegos","juniper","k","kaufen","kddi","ke","kerryhotels","kerrylogistics","kerryproperties","kfh","kg","kh","ki","kia","kids","kim","kindle","kitchen","kiwi","km","kn","koeln","komatsu","kosher","kp","kpmg","kpn","kr","krd","kred","kuokgroup","kw","ky","kyoto","kz","l","la","lacaixa","lamborghini","lamer","lancaster","land","landrover","lanxess","lasalle","lat","latino","latrobe","law","lawyer","lb","lc","lds","lease","leclerc","lefrak","legal","lego","lexus","lgbt","li","lidl","life","lifeinsurance","lifestyle","lighting","like","lilly","limited","limo","lincoln","link","lipsy","live","living","lk","llc","llp","loan","loans","locker","locus","lol","london","lotte","lotto","love","lpl","lplfinancial","lr","ls","lt","ltd","ltda","lu","lundbeck","luxe","luxury","lv","ly","m","ma","madrid","maif","maison","makeup","man","management","mango","map","market","marketing","markets","marriott","marshalls","mattel","mba","mc","mckinsey","md","me","med","media","meet","melbourne","meme","memorial","men","menu","merckmsd","mg","mh","miami","microsoft","mil","mini","mint","mit","mitsubishi","mk","ml","mlb","mls","mm","mma","mn","mo","mobi","mobile","moda","moe","moi","mom","monash","money","monster","mormon","mortgage","moscow","moto","motorcycles","mov","movie","mp","mq","mr","ms","msd","mt","mtn","mtr","mu","museum","music","mv","mw","mx","my","mz","n","na","nab","nagoya","name","navy","nba","nc","ne","nec","net","netbank","netflix","network","neustar","new","news","next","nextdirect","nexus","nf","nfl","ng","ngo","nhk","ni","nico","nike","nikon","ninja","nissan","nissay","nl","no","nokia","norton","now","nowruz","nowtv","np","nr","nra","nrw","ntt","nu","nyc","nz","o","obi","observer","office","okinawa","olayan","olayangroup","ollo","om","omega","one","ong","onl","online","ooo","open","oracle","orange","org","organic","origins","osaka","otsuka","ott","ovh","p","pa","page","panasonic","paris","pars","partners","parts","party","pay","pccw","pe","pet","pf","pfizer","pg","ph","pharmacy","phd","philips","phone","photo","photography","photos","physio","pics","pictet","pictures","pid","pin","ping","pink","pioneer","pizza","pk","pl","place","play","playstation","plumbing","plus","pm","pn","pnc","pohl","poker","politie","porn","post","pr","pramerica","praxi","press","prime","pro","prod","productions","prof","progressive","promo","properties","property","protection","pru","prudential","ps","pt","pub","pw","pwc","py","q","qa","qpon","quebec","quest","r","racing","radio","re","read","realestate","realtor","realty","recipes","red","redstone","redumbrella","rehab","reise","reisen","reit","reliance","ren","rent","rentals","repair","report","republican","rest","restaurant","review","reviews","rexroth","rich","richardli","ricoh","ril","rio","rip","ro","rocks","rodeo","rogers","room","rs","rsvp","ru","rugby","ruhr","run","rw","rwe","ryukyu","s","sa","saarland","safe","safety","sakura","sale","salon","samsclub","samsung","sandvik","sandvikcoromant","sanofi","sap","sarl","sas","save","saxo","sb","sbi","sbs","sc","scb","schaeffler","schmidt","scholarships","school","schule","schwarz","science","scot","sd","se","search","seat","secure","security","seek","select","sener","services","seven","sew","sex","sexy","sfr","sg","sh","shangrila","sharp","shell","shia","shiksha","shoes","shop","shopping","shouji","show","si","silk","sina","singles","site","sj","sk","ski","skin","sky","skype","sl","sling","sm","smart","smile","sn","sncf","so","soccer","social","softbank","software","sohu","solar","solutions","song","sony","soy","spa","space","sport","spot","sr","srl","ss","st","stada","staples","star","statebank","statefarm","stc","stcgroup","stockholm","storage","store","stream","studio","study","style","su","sucks","supplies","supply","support","surf","surgery","suzuki","sv","swatch","swiss","sx","sy","sydney","systems","sz","t","tab","taipei","talk","taobao","target","tatamotors","tatar","tattoo","tax","taxi","tc","tci","td","tdk","team","tech","technology","tel","temasek","tennis","teva","tf","tg","th","thd","theater","theatre","tiaa","tickets","tienda","tips","tires","tirol","tj","tjmaxx","tjx","tk","tkmaxx","tl","tm","tmall","tn","to","today","tokyo","tools","top","toray","toshiba","total","tours","town","toyota","toys","tr","trade","trading","training","travel","travelers","travelersinsurance","trust","trv","tt","tube","tui","tunes","tushu","tv","tvs","tw","tz","u","ua","ubank","ubs","ug","uk","unicom","university","uno","uol","ups","us","uy","uz","v","va","vacations","vana","vanguard","vc","ve","vegas","ventures","verisign","vermögensberater","vermögensberatung","versicherung","vet","vg","vi","viajes","video","vig","viking","villas","vin","vip","virgin","visa","vision","viva","vivo","vlaanderen","vn","vodka","volvo","vote","voting","voto","voyage","vu","w","wales","walmart","walter","wang","wanggou","watch","watches","weather","weatherchannel","webcam","weber","website","wed","wedding","weibo","weir","wf","whoswho","wien","wiki","williamhill","win","windows","wine","winners","wme","wolterskluwer","woodside","work","works","world","wow","ws","wtc","wtf","x","xbox","xerox","xihuan","xin","xxx","xyz","y","yachts","yahoo","yamaxun","yandex","ye","yodobashi","yoga","yokohama","you","youtube","yt","yun","z","za","zappos","zara","zero","zip","zm","zone","zuerich","zw","IDNs","ελ","ευ","бг","бел","дети","ею","католик","ком","мкд","мон","москва","онлайн","орг","рус","рф","сайт","срб","укр","қаз","հայ","ישראל","קום","ابوظبي","ارامكو","الاردن","البحرين","الجزائر","السعودية","العليان","المغرب","امارات","ایران","بارت","بازار","بيتك","بھارت","تونس","سودان","سورية","شبكة","عراق","عرب","عمان","فلسطين","قطر","كاثوليك","كوم","مصر","مليسيا","موريتانيا","موقع","همراه","پاكستان","پاکستان","ڀارت","कॉम","नेट","भारत","भारतम्","भारोत","संगठन","বাংলা","ভারত","ভাৰত","ਭਾਰਤ","ભારત","ଭାରତ","இந்தியா","இலங்கை","சிங்கப்பூர்","భారత్","ಭಾರತ","ഭാരതം","ලංකා","คอม","ไทย","ລາວ","გე","みんな","アマゾン","クラウド","グーグル","コム","ストア","セール","ファッション","ポイント","世界","中信","中国","中國","中文网","亚马逊","企业","佛山","信息","健康","八卦","公司","公益","台湾","台灣","商城","商店","商标","嘉里","嘉里大酒店","在线","大拿","天主教","娱乐","家電","广东","微博","慈善","我爱你","手机","招聘","政务","政府","新加坡","新闻","时尚","書籍","机构","淡马锡","游戏","澳門","点看","移动","组织机构","网址","网店","网站","网络","联通","谷歌","购物","通販","集团","電訊盈科","飞利浦","食品","餐厅","香格里拉","香港","닷넷","닷컴","삼성","한국"]);
+			
+function isValidTLD(tld) {
+  return validTLDs.has(tld.toLowerCase());
+}
+
+function replaceURLsWithSubstring(text, replacement = "[Link]") {
+  if (typeof text !== "string") {
+	return text;
+  }
+
+  try {
+	// This pattern matches potential URLs more strictly
+	const urlPattern = /(\bhttps?:\/\/)?[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)+([/?#][^\s]*)?/g;
+
+	return text.replace(urlPattern, (match) => {
+	  // Split the match by dots to check the TLD
+	  const parts = match.split('.');
+	  const potentialTLD = parts[parts.length - 1].split(/[/?#]/)[0];
+
+	  // If it doesn't contain a slash, only replace if it starts with http:// or https://
+	  if (match.startsWith('http://') || match.startsWith('https://')) {
+		return replacement;
+	  }
+	  
+	  // Check if it's a valid TLD and contains a slash (indicating it's likely a URL)
+	  if (match.includes('/') || isValidTLD(potentialTLD)) {
+		return replacement;
+	  }
+
+	  // Otherwise, return the original match
+	  return match;
+	});
+  } catch (e) {
+	console.error(e);
+	return text;
+  }
+}
+
 
 function sanitizeRelay(text, textonly=false, alt = false) {
 	if (!text.trim()) {
@@ -5364,15 +5659,8 @@ async function applyBotActions(data, tab = false) {
 				return null;
 			} // probably a reply
 
-			if (settings.myname) {
-				let custombot = settings.myname.textparam1.toLowerCase().replace(/[^a-z0-9,_]+/gi, ""); // this won't work with names that are special
-				custombot = custombot.split(",");
-				if (custombot.includes(data.chatname.toLowerCase().replace(/[^a-z0-9_]+/gi, ""))) {
-					return null;
-				} // a bot or host, so we don't want to relay that
-			}
 
-			if (Date.now() - messageTimeout > 1000) {
+			if (!data.bot && (Date.now() - messageTimeout > 1000)) {
 				messageTimeout = Date.now();
 				var msg = {};
 				msg.tid = data.tid;
@@ -5387,8 +5675,7 @@ async function applyBotActions(data, tab = false) {
 					processResponse(msg, true, data); // this should be the first and only message
 				}
 			}
-		} else if (settings.s10relay && data.chatmessage && data.chatname && !data.event){
-			// console.log(data); 
+		} else if (settings.s10relay && !data.bot && data.chatmessage && data.chatname && !data.event){
 			sendToS10(data, false, true); // we'll handle the relay logic here instead
 		}
 
@@ -5453,7 +5740,7 @@ async function applyBotActions(data, tab = false) {
 			}
 		}
 
-		if (settings.autohi && data.chatname) {
+		if (settings.autohi && data.chatname ) {
 			if (data.chatmessage.toLowerCase() === "hi") {
 				if (Date.now() - messageTimeout > 60000) {
 					// respond to "1" with a "1" automatically; at most 1 time per minute.
@@ -5904,7 +6191,20 @@ async function applyBotActions(data, tab = false) {
 		if (settings.ollamaCensorBot){
 			try{
 				if (settings.ollamaCensorBotBlockMode){
-					let good = await censorMessageWithOllama(data);
+					let good = false;
+					if (data.chatmessage && data.chatmessage.length <= 3) {
+						// For very short messages, use the history-aware censoring
+						//try {
+							good = await censorMessageWithOllama(data); // # TODO: IMPROVE AND FIX.
+							//good = await censorMessageWithHistory(data);
+						//} catch(e){
+						//	good = await censorMessageWithOllama(data);
+						//}
+					} else {
+						// For longer messages, use the existing single-message censoring
+						good = await censorMessageWithOllama(data);
+					}					
+					
 					if (!good){
 						return false;
 					}
@@ -8411,7 +8711,6 @@ var jokes = [
 	}
 ];
 
-// Define the database variables
 let db;
 const dbName = "chatMessagesDB";
 const storeName = "messages";
@@ -8569,5 +8868,12 @@ function monitorFileChanges() {
 		}
 	}, 1000); // Check for changes every second
 }
-	
-	//
+
+window.addEventListener('beforeunload', async function() {
+  document.title = "Close me - Social Stream Ninja";
+});
+
+window.addEventListener('unload', async function() {
+  document.title = "Close me - Social Stream Ninja";
+});
+

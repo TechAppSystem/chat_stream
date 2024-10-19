@@ -11,7 +11,7 @@
 		}
 	} catch(e){}
 
-	function getTranslation(key, value = false) {
+/* 	function getTranslation(key, value = false) {
 		if (settings.translation && settings.translation.innerHTML && key in settings.translation.innerHTML) {
 			// these are the proper translations
 			return settings.translation.innerHTML[key];
@@ -22,7 +22,26 @@
 		} else {
 			return key.replaceAll("-", " "); //
 		}
-	}
+	} */
+	
+	const getTranslation = (() => {
+	  const cache = new Map();
+	  return (key, value = false) => {
+		if (cache.has(key)) return cache.get(key);
+		let result;
+		if (settings.translation && settings.translation.innerHTML && key in settings.translation.innerHTML) {
+		  result = settings.translation.innerHTML[key];
+		} else if (settings.translation && settings.translation.miscellaneous && key in settings.translation.miscellaneous) {
+		  result = settings.translation.miscellaneous[key];
+		} else if (value !== false) {
+		  result = value;
+		} else {
+		  result = key.replaceAll("-", " ");
+		}
+		cache.set(key, result);
+		return result;
+	  };
+	})();
 
 	function escapeHtml(unsafe) {
 		try {
@@ -290,9 +309,6 @@
 					if (BTTV.globalEmotes) {
 						EMOTELIST = deepMerge(BTTV.globalEmotes, EMOTELIST);
 					}
-					// for testing.
-					// EMOTELIST = deepMerge({"ASSEMBLE0":{url:"https://cdn.7tv.app/emote/641f651b04bb57ba4db57e1d/1x.webp","zw":true}}, EMOTELIST);
-					
 				} catch (e) {}
 			}
 		}
@@ -311,6 +327,28 @@
 				} catch (e) {}
 			}
 		}
+		if (FFZ) {
+			//console.log(FFZ);
+			if (settings.ffz) {
+				try {
+					if (FFZ.channelEmotes) {
+						EMOTELIST = deepMerge(FFZ.channelEmotes, EMOTELIST);
+					}
+				} catch (e) {}
+				try {
+					if (FFZ.globalEmotes) {
+						EMOTELIST = deepMerge(FFZ.globalEmotes, EMOTELIST);
+					}
+				} catch (e) {}
+			}
+		}
+		
+		// for testing.
+ 		//EMOTELIST = deepMerge({
+		//	 "ASSEMBLE0":{url:"https://cdn.7tv.app/emote/641f651b04bb57ba4db57e1d/2x.webp","zw":true},
+		//	 "oEDM": {url:"https://cdn.7tv.app/emote/62127910041f77b2480365f4/2x.webp","zw":true},
+		//	 "widepeepoHappy": "https://cdn.7tv.app/emote/634493ce05c2b2cd864d5f0d/2x.webp"
+		// }, EMOTELIST);
 		//console.log(EMOTELIST);
 	}
 
@@ -732,6 +770,7 @@
 	var BTTV = false;
 	var videosMuted = false;
 	var SEVENTV = false;
+	var FFZ = false;
 	
 	function containsShorts(url) {
 		const urlObj = new URL(url);
@@ -763,6 +802,9 @@
 					if (settings.seventv) {
 						chrome.runtime.sendMessage(chrome.runtime.id, { getSEVENTV: true }, function (response) {});
 					}
+					if (settings.ffz) {
+						chrome.runtime.sendMessage(chrome.runtime.id, { getFFZ: true }, function (response) {});
+					}
 					if (settings.delayyoutube){
 						captureDelay = 3200;
 						//console.log(captureDelay);
@@ -782,6 +824,13 @@
 				if ("BTTV" in request) {
 					BTTV = request.BTTV;
 					//console.log(BTTV);
+					sendResponse(true);
+					mergeEmotes();
+					return;
+				}
+				if ("FFZ" in request) {
+					FFZ = request.FFZ;
+					//console.log(FFZ);
 					sendResponse(true);
 					mergeEmotes();
 					return;
@@ -828,11 +877,23 @@
 		// {"state":isExtensionOn,"streamID":channel, "settings":settings}
 		if ("settings" in response) {
 			settings = response.settings;
-			if (settings.bttv && !BTTV) {
-				chrome.runtime.sendMessage(chrome.runtime.id, { getBTTV: true }, function (response) {});
-			}
-			if (settings.seventv && !SEVENTV) {
-				chrome.runtime.sendMessage(chrome.runtime.id, { getSEVENTV: true }, function (response) {});
+			if ("settings" in response) {
+				settings = response.settings;
+				if (settings.bttv && !BTTV) {
+					chrome.runtime.sendMessage(chrome.runtime.id, { getBTTV: true }, function (response) {
+						//	console.log(response);
+					});
+				}
+				if (settings.seventv && !SEVENTV) {
+					chrome.runtime.sendMessage(chrome.runtime.id, { getSEVENTV: true }, function (response) {
+						//	console.log(response);
+					});
+				}
+				if (settings.ffz && !FFZ) {
+					chrome.runtime.sendMessage(chrome.runtime.id, { getFFZ: true }, function (response) {
+						//	console.log(response);
+					});
+				}
 			}
 			if (settings.delayyoutube){
 				captureDelay = 2000;
@@ -890,7 +951,42 @@
 		onElementInserted(ele, function (ele2) {
 			setTimeout(() => processMessage(ele2, false), captureDelay);
 		});
+	  } else if (!ele){
+		 const message = document.querySelector("yt-live-chat-app yt-formatted-string.yt-live-chat-message-renderer");
+		if (message && !document.getElementById("videoIdInput")) {
+			message.innerText = 
+				"It doesn't seem like we've been able to find any active live Youtube chat.\n\n" +
+				"➡️ Your Youtube stream must be already Live, active, and public for this option to work.\n\n" +
+				"Please stop and reactivate this Youtube option once your video is public and live.\n\n\n\n\n" +
+				"For unlisted videos, you can use a specific video ID instead.\n\n" +
+				"If you know the video ID, you can try loading it specifically below:\n\n\n";
+
+			// Create input element
+			const input = document.createElement('input');
+			input.type = 'text';
+			input.id = 'videoIdInput';
+			input.placeholder = 'Enter video ID';
+			message.parentNode.insertBefore(input, message.nextSibling);
+
+			// Create button element
+			const button = document.createElement('button');
+			button.id = 'loadChatButton';
+			button.textContent = 'Load Chat';
+			message.parentNode.insertBefore(button, input.nextSibling);
+
+			// Add event listener to the button
+			button.addEventListener('click', () => {
+				const videoId = input.value.trim();
+				if (videoId) {
+					window.location.href = `https://www.youtube.com/live_chat?is_popout=1&v=${videoId}`;
+				} else {
+					alert('Please enter a valid video ID');
+				}
+			});
+		}
 	  }
+	  // style-scope yt-live-chat-message-renderer
+	  
 	}, 1000);
 
 	if (window.location.href.includes("youtube.com/watch")) {
@@ -910,7 +1006,7 @@
 						ele4.skip = true;
 						cleared = true;
 						if (ele4.id) {
-							messageHistory.push(ele4.id);
+							messageHistory.add(ele4.id);
 						}
 					});
 				} catch (e) {}

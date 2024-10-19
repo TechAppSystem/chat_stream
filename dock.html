@@ -7,6 +7,7 @@
 		<meta name="title" content="Social Stream - Dashboard" />
 		<link rel="icon" href="./icons/favicon.ico" />
 		<link href="./thirdparty/NotoColorEmoji.ttf" as="font" type="font/ttf" crossorigin="anonymous" />
+		<meta name="robots" content="noindex">
 
 		<style>
 			:root {
@@ -277,6 +278,10 @@
 			  cursor: pointer;
 			  transition: background-color 0.3s;
 			}
+			
+			.horizontal .bubble {
+				vertical-align: top;
+			}
 
 			#obsControlModal button:hover {
 			  background-color: #666;
@@ -535,6 +540,16 @@
 				display: flex;
 				margin-top: 8px;
 			}
+			
+			.allowfat .hl-message{
+				max-width: 300px;
+				word-break: keep-all;
+				line-break: loose;
+				overflow-wrap: break-word;
+				overflow:auto;
+				white-space: normal;
+			}
+				
 
 			.twoLines.alignright .hl-firstline {
 				display: flex;
@@ -700,6 +715,9 @@
 				margin: 0;
 				padding: 0;
 			}
+			horizontal .largeavatar .hl-leftside {
+				margin: 0px;
+			}
 
 			.hl-righttopline {
 				max-height: 16px;
@@ -763,12 +781,35 @@
 				padding-top: var(--padding-rows) !important;
 				padding-bottom: var(--padding-rows) !important;
 			}
-
+			
+			
 			.highlight-chat.expand {
 				animation: expand 2s;
 				overflow: visible;
 				word-break: break-all;
 				line-break: anywhere;
+			}
+			
+			@keyframes slideLeft { 
+				from {
+					transform: translateX(150%);
+				}
+				to {
+					transform: translateX(0px);
+				}
+			}
+			
+			.horizontal .highlight-chat {
+				vertical-align:top;
+				animation: expand 4s, slideLeft 1s ease-in-out forwards;
+			}
+			
+			.horizontal .highlight-chat.fadein {
+				animation: expand 4s, slideLeft 1s ease-in-out forwards, fadein 2s;
+			}
+			
+			.horizontal .highlight-chat.fadeout {
+				animation:  expand 4s, slideLeft 1s ease-in-out forwards, fadeout 1s;
 			}
 
 			.larger-emojis {
@@ -780,19 +821,19 @@
 				overflow: hidden;
 			}
 
-			.highlight-chat.compactmode.expand {
+			.horizontal .highlight-chat.compactmode {
 				padding-top: 3px;
 				background-color: #0000;
 			}
 
-			.compactmode.expand.time-arrived {
+			.horizontal .compactmode.time-arrived {
 				margin: auto 0;
 			}
 			.larger-emojis:not(.expand) .hl-message {
 				line-height: 34px !important;
 			}
 
-			.highlight-chat.expand.larger-emojis {
+			.horizontal .highlight-chat.larger-emojis {
 				line-height: 30px;
 				height: 40px;
 				max-height: 40px;
@@ -906,11 +947,11 @@
 				0% {
 					max-width: 0px;
 				}
-				20% {
-					max-width: 300px;
+				40% {
+					max-width: 600px;
 				}
-				50% {
-					max-width: 800px;
+				80% {
+					max-width: 1200px;
 				}
 				100% {
 					max-width: 20000px;
@@ -1130,7 +1171,6 @@
 				text-shadow: 0 0 10px #fff, 0 0 20px #fff, 0 0 30px #ffe60073, 0 0 40px #ffe60073, 0 0 50px #ffe60073, 0 0 60px #ffe60073, 0 0 70px #ffe60073;
 				padding-left: 5px;
 				margin: auto;
-				white-space: nowrap;
 				white-space: nowrap;
 			}
 
@@ -1674,10 +1714,10 @@
 				}
 			}
 
-			.last-message {
+			.last-message:not(.horizontal) {
 				border: 3px white solid;
 			}
-			.last-message2 {
+			.last-message2:not(.horizontal) {
 				background-color: var(--pressed-color) !important;
 			}
 			.pressed {
@@ -1791,6 +1831,9 @@
 				transition: opacity 0.5 ease-in-out;
 				opacity: 1;
 			}
+			
+
+			
 			@keyframes fadein {
 				0% {
 					opacity: 0;
@@ -1978,10 +2021,37 @@
 				margin-left: auto;
 				margin-right: 0;
 			}
+			
+			.horizontal .hl-message {
+				min-height: 24px;
+			}
+			
+			.alignright .horizontal .hl-donation {
+				padding-right: 11px;
+			}
+			
+			.alignright .horizontal {
+				direction: ltr; 
+			}
+			
+			.horizontal .hl-leftside:empty{
+				 display: none;
+			}
+			
+			.horizontal .hl-content {
+				align-content: center;
+			}
 
 			.alignright .compactmode .hl-message {
 				flex-direction: var(--flex-direction);
 				display: flex;
+				overflow:hidden;
+				text-overflow: ellipsis;
+			}
+			
+			.alignright .highlight-chat .hl-firstline {
+				overflow:hidden;
+				text-overflow: ellipsis;
 			}
 			
 			#meta {
@@ -2328,6 +2398,8 @@
 			var autoTimeoutEnabled = true;
 			var autoScrollCatch = 200;
 
+			var doubleLimit = false;
+			
 			var encode = false;
 
 			try {
@@ -2627,6 +2699,7 @@
 			var largeavatar = false;
 			if (urlParams.has("largeavatar")) {
 				largeavatar = true;
+				getById("output").classList.add("largeavatar");
 			} else if (urlParams.has("twolines")) {
 				tainted = true;
 				twoLines = true;
@@ -2676,6 +2749,12 @@
 				trimChat = urlParams.get("trim") || 200;
 				trimChat = parseInt(trimChat) || 0;
 			}
+			
+			var trimName = false;
+			if (urlParams.has("trimname")) {
+				trimName = urlParams.get("trimname") || 8;
+			}
+			
 
 			var alignbottom = false;
 			if (urlParams.has("alignbottom")) {
@@ -2940,7 +3019,8 @@
 
 			var flexOrNotToFlex = "flex";
 
-			if (urlParams.has("horizontal")) {
+			if (urlParams.has("horizontal")) { 
+				
 				tainted = true;
 				horizontal = true;
 				flexOrNotToFlex = "inline-block";
@@ -2949,21 +3029,38 @@
 				getById("output").style.right = "0";
 				if (twoLines) {
 					getById("output").style.maxHeight = "70px";
-					getById("menu").style.top = "72px";
+					//getById("menu").style.top = "72px";
 					getById("output").style.overflow = "visible";
 				} else if (stylizeEmoji) {
-					getById("output").style.maxHeight = "40px";
-					getById("menu").style.top = "42px";
+					getById("output").style.maxHeight = "70px";
+					//getById("menu").style.top = "42px";
 					getById("output").style.overflow = "hidden";
 				} else {
-					getById("output").style.maxHeight = "30px";
-					getById("menu").style.top = "42px";
+					getById("output").style.maxHeight = "60px";
+					//getById("menu").style.top = "42px";
 					getById("output").style.overflow = "hidden";
+				}
+				if (largeavatar){
+					if (twoLines){
+						getById("output").style.maxHeight = "140px";
+					} else {
+						getById("output").style.maxHeight = "120px";
+					}
 				}
 
 				getById("output").style.position = "absolute";
 				getById("output").style.textAlign = "right";
-				getById("output").style.whiteSpace = "nowrap";
+				
+				if (!(urlParams.has("compact") || urlParams.has("overlaymode"))) {
+					getById("output").style.whiteSpace = "nowrap"
+				} else {
+					getById("output").style.maxHeight = "200px";
+					getById("output").classList.add("allowfat");
+					getById("output").style.whiteSpace = "nowrap"
+				}
+				
+				getById("output").classList.add('horizontal');
+				
 				document.body.classList.remove("notcompactmode");
 				compactmode = true;
 				customNodeLimit = 15;
@@ -3356,6 +3453,21 @@
 			if (urlParams.has("voice")) {
 				voiceName = urlParams.get("voice") || "google";
 			}
+			
+			var voiceNameGoogle = false;
+			if (urlParams.has("voicegoogle")) {
+				voiceNameGoogle = urlParams.get("voicegoogle");
+			}
+			
+			var voiceNameElevenlabs = false;
+			if (urlParams.has("voice11")) {
+				voiceNameElevenlabs = urlParams.get("voice11");
+			}
+			
+			var voiceNameSpeechify = false;
+			if (urlParams.has("voicespeechify")) {
+				voiceNameSpeechify = urlParams.get("voicespeechify");
+			}
 
 			function speak(text, allow = false) {
 				if (!speech && !allow) {
@@ -3448,7 +3560,7 @@
 				} else {
 					speechInput.voice = voice;
 				}
-				console.log("volume: "+volume);
+				// console.log("volume: "+volume);
 				speechInput.volume = volume;
 				speechInput.rate = rate;
 				speechInput.pitch = pitch;
@@ -3527,6 +3639,7 @@
 			var selfQueue = false;
 			if (urlParams.has("selfqueue")) {
 				selfQueue = urlParams.get("selfqueue") || "!queue";
+				selfQueue = selfQueue.split(',').map(item => item.trim());
 			}
 
 			var saveimg = false;
@@ -3835,6 +3948,11 @@
 			} else if (urlParams.has("lightmode")) {
 				darkmode = false;
 			}
+			
+			var filterEmojiOnly = false;
+			if (urlParams.has("noemojisonly")) {
+				filterEmojiOnly = true;
+			}
 
 			var syncDocks = false;
 			if (urlParams.has("sync") || urlParams.has("synced")) {
@@ -3939,12 +4057,14 @@
 
 			var hideNotMembers = false;
 			var hideNotDonos = false;
-
+			
 			if (urlParams.has("showonlydonos")) {
+				doubleLimit = true;
 				donos();
 			}
 
 			if (urlParams.has("showonlymembers")) {
+				doubleLimit = true;
 				members();
 			}
 			var eventsOnly = false;
@@ -3955,6 +4075,7 @@
 				} else {
 					eventsOnly = true;
 				}
+				doubleLimit = true;
 			}
 			
 			
@@ -3980,9 +4101,13 @@
 				getById("show_only_queue").dataset.state = "1";
 				getById("show_only_queue").classList.add("pressed");
 			}
-
+			
+			var ttscommand = false;
+			if (urlParams.has("ttscommand")) {
+				ttscommand = true;
+			}
+			
 			var hideNotPinned = false;
-
 			if (urlParams.has("pinnedonly")) {
 				hideNotPinned = true;
 				document.documentElement.style.setProperty("--pinned-queued-bg", "unset");
@@ -4891,13 +5016,14 @@
 
 						var titleText = false;
 						if (tab.title) {
-							titleText = document.createTextNode(tab.title.slice(0, 100) + " - ");
+							titleText = document.createTextNode(tab.title.slice(0, 100));
 						}
 						const smallText = document.createElement("small");
 						const italicsText = document.createElement("i");
-						italicsText.textContent = `(${tab.url.slice(0, 100)})`;
-
-						smallText.appendChild(italicsText);
+						if (tab.url){
+							italicsText.textContent = ` - (${tab.url.slice(0, 100)})`;
+							smallText.appendChild(italicsText);
+						}
 
 						if (tab.favIconUrl) {
 							const img = document.createElement("img");
@@ -6220,7 +6346,7 @@
 			function cleanUpOldNodes() {
 				var nodes = document.querySelectorAll("#output>div:not(.queued)");
 				var total2Remove = 0;
-				if (isOBSBrowserSource) {
+				if (isOBSBrowserSource && !doubleLimit) {
 					// This is an OBS browser source, so lets go light on it.
 					if (customNodeLimit) {
 						total2Remove = nodes.length - customNodeLimit;
@@ -6283,7 +6409,7 @@
 				if (animateout) {
 					animateCSS(node, animateout); // animate then delete
 				} else if (fadeout && horizontal) {
-					node.classList.add("fadeout");
+					node.classList.add("fadeout"); 
 					setTimeout(
 						function (node) {
 							nodeRemove(node);
@@ -6544,6 +6670,23 @@
 				console.error(e);
 				return text;
 			  }
+			}
+			
+			function isEmojiOnly(str) {
+				function stripEmojis(text) {
+					return text
+						.replace(/\p{Emoji_Presentation}|\p{Emoji}\uFE0F/gu, "")
+						.replace(/[\u200D\uFE0F]/g, "")
+						.replace(/([\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD10-\uDDFF])/gi, "");
+				}
+
+				let strippedStr = stripEmojis(str);
+				strippedStr = strippedStr.replace(/\s+/g, '');
+				if (strippedStr.length === 0) {
+					return true; // Contains only emojis and/or spaces
+				}
+				const textContent = strippedStr.replace(/<[^>]*>/g, '');
+				return textContent.length === 0;
 			}
 
 			function processData(data, reloaded = false) {
@@ -6810,7 +6953,7 @@
 							.replace(/\s+/g, " ")
 							.trim();
 					}
-
+					
 					var chatmessage = data.chatmessage || "";
 
 					if (chatmessage) {
@@ -6835,7 +6978,13 @@
 					if (hideNumbers && data.chatmessage && !data.contentimg && !data.hasDonation && data.chatmessage === parseFloat(data.chatmessage)) {
 						return;
 					}
-
+					
+					if (filterEmojiOnly && data.chatmessage && !data.hasDonation && !(data.hasMembership || data.membership) && !data.contentimg) {
+						if (isEmojiOnly(data.chatmessage)) {
+							return; // Skip this message as it contains only emojis or empty HTML tags
+						}
+					}
+					
 					if (data.textonly) {
 						// should be legacy compatible, since textonly is new.
 						chatmessage = escapeHtml(chatmessage); // lets escape any < > ' " or other special characeters, since it would be dangerous as HTML.
@@ -7000,26 +7149,30 @@
 						data.bot = true;
 					}
 
-					var chatname = "";
+					var chatname = data.chatname;
 
 					var afterName = ":";
 					if (twoLines) {
 						afterName = "";
 					}
+					
+					if (trimName){
+						chatname = truncateText(chatname, trimName);
+					} 
 
 					if (largeavatar) {
-						chatname = '<div dir="' + textDirection + '" ' + nameColor + ' class="hl-name' + splitMode + '">' + (data.chatname || "") + '<span class="hl-badges">' + chatbadges + "</span></div>";
-					} else if (data.chatname) {
+						chatname = '<div dir="' + textDirection + '" ' + nameColor + ' class="hl-name' + splitMode + '">' + (chatname || "") + '<span class="hl-badges">' + chatbadges + "</span></div>";
+					} else if (chatname) {
 						if (compactmode) {
 							if (specialMessage) {
 								chatname = '<div dir="' + textDirection + '" class="hl-name' + splitMode + '"></div>';
 							} else if (chatbadges) {
-								chatname = '<span class="hl-badges">' + chatbadges + "</span><div " + nameColor + ' dir="' + textDirection + '" class="hl-name' + splitMode + '">' + data.chatname + afterName + "</div>";
+								chatname = '<span class="hl-badges">' + chatbadges + "</span><div " + nameColor + ' dir="' + textDirection + '" class="hl-name' + splitMode + '">' + chatname + afterName + "</div>";
 							} else {
-								chatname = '<div dir="' + textDirection + '" ' + nameColor + ' class="hl-name' + splitMode + '">' + data.chatname + afterName + "</div>";
+								chatname = '<div dir="' + textDirection + '" ' + nameColor + ' class="hl-name' + splitMode + '">' + chatname + afterName + "</div>";
 							}
 						} else {
-							chatname = '<div dir="' + textDirection + '" ' + nameColor + ' class="hl-name' + splitMode + '">' + chatbadges + data.chatname + "</div>";
+							chatname = '<div dir="' + textDirection + '" ' + nameColor + ' class="hl-name' + splitMode + '">' + chatbadges + chatname + "</div>";
 						}
 					} else if (specialMessage && compactmode) {
 						chatname = '<div dir="' + textDirection + '" class="hl-name' + splitMode + '"></div>';
@@ -7034,7 +7187,7 @@
 
 					var expand = "";
 
-					if (horizontal) {
+					if (horizontal && !compactmode) {
 						expand = " expand";
 					}
 
@@ -7055,7 +7208,6 @@
 					if (trimChat){
 						chatmessage = truncateHTMLContent(chatmessage, trimChat);
 					}
-
 
 					if (largeavatar) {
 						var node = createElementFromHTML('<div id="msg_' + data.id + '" ' + mid + ' data-menu="context-menu" class="highlight-chat' + expand + '" data-source-type="' + data.type + '">' + '<div class="hl-leftside">' + chatImg + showType + "</div>" + '<div class="hl-rightside' + larger + '">' + '<div class="hl-righttopline">' + chatname + timeArrived + "<div class='queueid'></div>" + "</div>" + '<div class="hl-message">' + '<span class="hl-content" dir="' + textDirection + '" id="content_' + data.id + '">' + chatmessage + "</span>" + addImage + donationHTML + "</div>" + "</div></div>");
@@ -7430,14 +7582,17 @@
 						node.children[0].dataset.qid = selectedQueue.length;
 						node.classList.add("queued");
 						updateQueueButton();
-					} else if (selfQueue && data.chatmessage && data.chatmessage.split(" ")[0] == selfQueue) {
+					} else if (selfQueue && data.chatmessage && (selfQueue.some(item => data.chatmessage.split(" ").includes(item)))) {
 						selectedQueue.push(node);
 						node.children[0].dataset.qid = selectedQueue.length;
 						node.classList.add("queued");
 						updateQueueButton();
 					}
-
-					if (speech && !bot) {
+					if (ttscommand && data.chatmessage && data.chatmessage.includes("!say ") && !bot){
+						if (!node.classList.contains("hide")) {
+							speechMeta(data);
+						}
+					} else if (speech && !bot) {
 						if (!node.classList.contains("hide")) {
 							speechMeta(data);
 						}
@@ -7514,8 +7669,8 @@
 						}
 					};
 
-					if (voiceName) {
-						data.voice.name = voiceName;
+					if (voiceNameGoogle || voiceName) {
+						data.voice.name = voiceNameGoogle || voiceName;
 					}
 					if (voiceGender) {
 						data.voice.ssmlGender = voiceGender.toUpperCase();
@@ -7566,7 +7721,7 @@
 					let model = English ? "simba-english" : "simba-multilingual";
 					const data = {
 						input: "<speak>" + tts + "</speak>",
-						voice_id: voiceName || "henry",
+						voice_id: voiceNameSpeechify || voiceName || "henry",
 						model: model,
 						audio_format: "mp3"
 					};
@@ -7627,7 +7782,7 @@
 			function ElevenLabsTTS(tts) {
 				try {
 					premiumQueueActive = true;
-					const voiceid = voiceName || "VR6AewLTigWG4xSOukaG";
+					const voiceid = voiceNameElevenlabs || voiceName || "VR6AewLTigWG4xSOukaG";
 					const url = "https://api.elevenlabs.io/v1/text-to-speech/" + voiceid + "/stream?optimize_streaming_latency=" + voiceLatency;
 
 					var data = {
@@ -7692,85 +7847,94 @@
 				if (doNotReadEvents && data.event) {
 					return;
 				}
+				
+				try {
+					var isCommand = false;
+					var msgPlain = document.getElementById("content_" + data.id);
 
-				var isCommand = false;
-				var msgPlain = document.getElementById("content_" + data.id);
-
-				if (msgPlain) {
-					msgPlain = (msgPlain.textContent || msgPlain.innerText || "")
-						.replace(/[\u2700-\u27BF\uE000-\uF8FF\uD83C\uD800-\uDFFF\uD83E\uD810-\uDFFF\u2011-\u26FF]/g, "")
-						.replace(/_/g, " ")
-						.replace(/@/g, " ")
-						.replace(/^!/, ""); // Remove emojis, underscores, and @ symbols, and check if it starts with '!'
-
-					msgPlain = msgPlain.replace(/!+/g, " "); // Replace multiple '!' with a single space
-					msgPlain = msgPlain.replace(/catJAM/gi, ""); // Remove 'catJAM' case-insensitively
-					if (beepwords){
-						msgPlain = msgPlain.replace(/\*+/g, ' beep ');
-					} else {
-						msgPlain = msgPlain.replace(/\*/g, '');
+					if (msgPlain) {
+						msgPlain = (msgPlain.textContent || msgPlain.innerText || "") // Remove emojis, underscores, and @ symbols
+							.replace(/[\u2700-\u27BF\uE000-\uF8FF\uD83C\uD800-\uDFFF\uD83E\uD810-\uDFFF\u2011-\u26FF]/g, "")
+							.replace(/_/g, " ")
+							.replace(/@/g, " ")
+							
+						if (ttscommand && msgPlain.includes("!say ")){
+							msgPlain = msgPlain.split("!say ")[1].trim();
+							allow = true;
+						}
+						
+						msgPlain = msgPlain.replace(/^!/, ""); // check if it starts with '!'
+						msgPlain = msgPlain.replace(/!+/g, " "); // Replace multiple '!' with a single space
+						msgPlain = msgPlain.replace(/catJAM/gi, ""); // Remove 'catJAM' case-insensitively
+						if (beepwords){
+							msgPlain = msgPlain.replace(/\*+/g, ' beep ');
+						} else {
+							msgPlain = msgPlain.replace(/\*/g, '');
+						}
+						msgPlain = msgPlain.trim();
 					}
-					msgPlain = msgPlain.trim();
-				}
 
-				var chatname = "";
-				if (ttsSpeakChatname && data.chatname) {
-					chatname = data.chatname.toLowerCase().replace(/([\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD10-\uDDFF])/g, "");
-					chatname = chatname.replaceAll("_", " ");
-					chatname = chatname.replaceAll("@", " ");
-					chatname = chatname.replaceAll("!", " ");
-				}
+					var chatname = "";
+					if (ttsSpeakChatname && data.chatname) {
+						chatname = data.chatname.toLowerCase().replace(/([\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD10-\uDDFF])/g, "");
+						chatname = chatname.replaceAll("_", " ");
+						chatname = chatname.replaceAll("@", " ");
+						chatname = chatname.replaceAll("!", " ");
+					}
 
-				if (data.hasDonation) {
-					var donoText = document.createElement("div");
-					donoText.innerHTML = data.hasDonation;
-					donoText = donoText.textContent || donoText.innerText || "";
-					donoText = donoText.toLowerCase().replace(/([\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD10-\uDDFF])/g, "");
-					donoText = donoText.replaceAll("_", " ");
-					donoText = donoText.replaceAll("@", " ");
-					donoText = donoText.replaceAll("!", " ");
+					if (data.hasDonation) {
+						var donoText = document.createElement("div");
+						donoText.innerHTML = data.hasDonation;
+						donoText = donoText.textContent || donoText.innerText || "";
+						donoText = donoText.toLowerCase().replace(/([\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD10-\uDDFF])/g, "");
+						donoText = donoText.replaceAll("_", " ");
+						donoText = donoText.replaceAll("@", " ");
+						donoText = donoText.replaceAll("!", " ");
 
-					if (chatname) {
-						///// NAME
-						if (English) {
-							if (msgPlain) {
-								speak(chatname + " has donated " + donoText + " and says " + msgPlain, allow);
+						if (chatname) {
+							///// NAME
+							if (English) {
+								if (msgPlain) {
+									speak(chatname + " has donated " + donoText + " and says " + msgPlain, allow);
+								} else {
+									speak(chatname + " has donated " + donoText, allow);
+								}
+							} else if (msgPlain) {
+								speak(chatname + "! ! .. " + donoText + "! ! .. " + msgPlain, allow);
 							} else {
-								speak(chatname + " has donated " + donoText, allow);
+								speak(chatname + "! ! .. " + donoText, allow);
+							}
+						} else if (English) {
+							// no name but english
+							if (msgPlain) {
+								speak("Someone has donated " + donoText + " and says " + msgPlain, allow);
+							} else {
+								speak("Someone has donated " + donoText, allow);
 							}
 						} else if (msgPlain) {
-							speak(chatname + "! ! .. " + donoText + "! ! .. " + msgPlain, allow);
+							// no name; not english
+							speak(donoText + "! ! .. " + msgPlain, allow);
 						} else {
-							speak(chatname + "! ! .. " + donoText, allow);
-						}
-					} else if (English) {
-						// no name but english
-						if (msgPlain) {
-							speak("Someone has donated " + donoText + " and says " + msgPlain, allow);
-						} else {
-							speak("Someone has donated " + donoText, allow);
+							speak(donoText, allow);
 						}
 					} else if (msgPlain) {
-						// no name; not english
-						speak(donoText + "! ! .. " + msgPlain, allow);
-					} else {
-						speak(donoText, allow);
-					}
-				} else if (msgPlain) {
-					// NO DONATION
-					if (chatname) {
-						// NAME
-						if (English) {
-							speak(chatname + " says! " + msgPlain, allow);
+						// NO DONATION
+						if (chatname) {
+							// NAME
+							if (English) {
+								speak(chatname + " says! " + msgPlain, allow);
+							} else {
+								speak(chatname + "! ! .. " + msgPlain, allow);
+							}
+						} else if (English) {
+							// NO NAME
+							speak("Someone says! " + msgPlain, allow);
 						} else {
-							speak(chatname + "! ! .. " + msgPlain, allow);
+							speak(msgPlain, allow);
 						}
-					} else if (English) {
-						// NO NAME
-						speak("Someone says! " + msgPlain, allow);
-					} else {
-						speak(msgPlain, allow);
 					}
+				} catch(e){
+					errorlog(e);
 				}
 			}
 
@@ -7970,12 +8134,38 @@
 				if (!data) {
 					return;
 				}
+				if (tid){
+					if (typeof tid == "object") {
+						if (tid.includes("TTS")) {
+							tid = tid.filter(item => item !== "TTS");
+							if (data){
+								speak(data, true);
+							}
+							if (!tid.length){
+								return;
+							}
+						}
+					} else if (tid === "TTS") {
+						if (data){
+							speak(data, true);
+						}
+						return;
+					}
+				}
+				
 				var msg = {};
 				msg.overlayNinja = {};
 				msg.overlayNinja.tid = tid; // specific or array
 				msg.overlayNinja.response = data;
 
 				send2Extension(msg.overlayNinja);
+			}
+			
+			function truncateText(text, maxLength) {
+				if (text.length <= maxLength) {
+					return text;
+				}
+				return text.slice(0, maxLength - 1) + '...';
 			}
 			
 			function truncateHTMLContent(html, maxLength) {
